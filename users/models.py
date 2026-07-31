@@ -8,7 +8,7 @@ class User(AbstractUser):
         COURIER="COURIER", "Courier"
         FIRM="FIRM", "Firm"
         
-    base_role = Role.admin
+    base_role = Role.ADMIN
     
     role = models.CharField(max_length=20, choices=Role.choices, default=Role.FIRM)
     phone_number = models.CharField(max_length=20, unique=True)

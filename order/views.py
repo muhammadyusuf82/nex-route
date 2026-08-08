@@ -1,7 +1,7 @@
 from rest_framework import viewsets, permissions, status
 from rest_framework.response import Response
 from django.contrib.auth import get_user_model
-
+from rest_framework.pagination import PageNumberPagination
 from users.permissions import (
     IsAdminUserRole,
     IsAdminOrVerifiedFirm,
@@ -15,16 +15,19 @@ from .serializers import (
     TodoWriteSerializer,
     TodoCourierStatusSerializer,
 )
-
 User = get_user_model()
 
-
+class StandartResultsSetPagination(PageNumberPagination):
+    page_size = 30
+    page_size_query_param = 'page_size'
+    max_page_size = 100
 class ItemViewSet(viewsets.ModelViewSet):
     """CRUD for items. Firms manage their own; admins manage all."""
 
     queryset = Item.objects.select_related("owner").all()
     serializer_class = ItemSerializer
     permission_classes = [permissions.IsAuthenticated, IsItemOwnerOrAdmin]
+    pagination_class = StandartResultsSetPagination
 
     def get_queryset(self):
         user = self.request.user
@@ -70,6 +73,7 @@ class TodoViewSet(viewsets.ModelViewSet):
         "assigned_by", "courier", "courier__user"
     ).all()
     permission_classes = [permissions.IsAuthenticated, IsTodoAssignerOrAdmin]
+    pagination_class = StandartResultsSetPagination
 
     def get_serializer_class(self):
         if self.action in ("create", "update", "partial_update"):

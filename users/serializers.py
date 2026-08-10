@@ -40,7 +40,7 @@ class FirmRegistrationSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             'username', 'email', 'phone_number', 'password',
-            'company_name', 'firm_type', 'tax_id', 'address',
+            'company_name', 'firm_type', 'tax_id', 'address'
         ]
 
     def validate_password(self, value):
@@ -116,7 +116,8 @@ class CourierRegistrationSerializer(serializers.ModelSerializer):
 class FirmProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = FirmProfile
-        fields = ("id", "company_name", "firm_type", "tax_id", "address")
+        fields = ("id", "company_name", "firm_type", "tax_id", "address", "balance")
+        read_only_fields = ('balance')
 
 
 class CourierProfileSerializer(serializers.ModelSerializer):
@@ -138,9 +139,17 @@ class CourierProfileSerializer(serializers.ModelSerializer):
             "vehicle_type",
             "license_plate",
             "current_status",
+            "balance"
         )
-        read_only_fields = ("id", "user_id", "username", "email", "phone_number", "is_verified")
+        read_only_fields = ("id", "user_id", "username", "email", "phone_number", "is_verified", "balance")
 
+class PublicCourierProfileSerializer(serializers.ModelSerializer):
+    username = serializers.CharField(source="user.username", read_only=True)
+    phone_number = serializers.CharField(source="user.phone_number", read_only=True)
+    
+    class Meta:
+        model = CourierProfile
+        fields = ("id", "username", "phone_number", "vehicle_type", "license_plate", "current_status")
 
 class CourierProfileWriteSerializer(serializers.ModelSerializer):
     """Admin create/update of courier profile fields plus optional user fields."""
@@ -148,9 +157,7 @@ class CourierProfileWriteSerializer(serializers.ModelSerializer):
     username = serializers.CharField(required=False)
     email = serializers.EmailField(required=False, allow_blank=True)
     phone_number = serializers.CharField(required=False)
-    password = serializers.CharField(
-        write_only=True, required=False, style={"input_type": "password"}
-    )
+    password = serializers.CharField(write_only=True, required=False, style={"input_type": "password"})
     is_verified = serializers.BooleanField(required=False)
 
     class Meta:
@@ -164,6 +171,7 @@ class CourierProfileWriteSerializer(serializers.ModelSerializer):
             "vehicle_type",
             "license_plate",
             "current_status",
+            "balance"
         )
 
     def validate_password(self, value):

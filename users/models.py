@@ -21,6 +21,7 @@ class FirmProfile(models.Model):
     firm_type = models.CharField(max_length=25, choices=FirmType.choices)
     tax_id = models.CharField(max_length=50, unique=True)
     address = models.TextField()
+    balance = models.DecimalField(decimal_places=3, default=0.000)
     
 class CourierProfile(models.Model):
     class Status(models.TextChoices):
@@ -31,3 +32,4 @@ class CourierProfile(models.Model):
     vehicle_type = models.CharField(max_length=50)
     license_plate = models.CharField(max_length=20)
     current_status = models.CharField(max_length=20, choices=Status.choices, default=Status.OFFLINE)
+    balance = models.DecimalField(decimal_places=3, default=0.000)

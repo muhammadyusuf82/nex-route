@@ -1,17 +1,12 @@
+from django.urls import path
 from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import TokenRefreshView
-from django.urls import path
 
-from .views import (
-    CustomTokenObtainPairView,
-    FirmRegisterView,
-    CourierRegisterView,
-    UserViewSet,
-    CourierViewSet,
-)
+from .views import *
 
 router = DefaultRouter()
 router.register(r"accounts", UserViewSet, basename="user")
+router.register(r"firms", FirmViewSet, basename="firm")
 router.register(r"couriers", CourierViewSet, basename="courier")
 
 urlpatterns = [

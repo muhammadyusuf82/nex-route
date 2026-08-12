@@ -15,10 +15,11 @@ from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError, ObjectDoesNotExist
-
+import logging
 from .models import Item, Order
 from .serializers import OrderSerializer
 
+logger = logging.getLogger(__name__)
 User = get_user_model()
 
 COURIERS_GROUP = "couriers"
@@ -30,26 +31,22 @@ def _order_payload(order: Order) -> dict[str, Any]:
 
 
 class AuthenticatedConsumer(AsyncJsonWebsocketConsumer):
-    """Base consumer: requires authenticated user on scope (JWT middleware)."""
-
     required_roles: set[str] = set()
     require_verified: bool = True
 
-    async def connect(self):
+    async def connect(self) -> bool:
         user = self.scope.get("user")
         if user is None or not user.is_authenticated:
             await self.close(code=4401)
-            return
+            return False
         if self.required_roles and user.role not in self.required_roles:
             await self.close(code=4403)
-            return
+            return False
         if self.require_verified and user.role != User.Role.ADMIN and not user.is_verified:
             await self.close(code=4403)
-            return
+            return False
         await self.accept()
-
-    async def send_error(self, message: str, code: str = "error"):
-        await self.send_json({"type": "error", "code": code, "detail": message})
+        return True
 
 
 class OrderConsumer(AuthenticatedConsumer):
@@ -68,14 +65,12 @@ class OrderConsumer(AuthenticatedConsumer):
     required_roles = {User.Role.FIRM, User.Role.COURIER, User.Role.ADMIN}
 
     async def connect(self):
-        await super().connect()
-        if self.scope.get("user") is None or not self.scope["user"].is_authenticated:
+        ok = await super().connect()
+        if not ok:
             return
-
         user = self.scope["user"]
         self.user_group = f"user_{user.id}"
         await self.channel_layer.group_add(self.user_group, self.channel_name)
-
         if user.role == User.Role.COURIER:
             await self.channel_layer.group_add(COURIERS_GROUP, self.channel_name)
         if user.role == User.Role.ADMIN:
@@ -110,6 +105,7 @@ class OrderConsumer(AuthenticatedConsumer):
         except PermissionError as exc:
             await self.send_error(str(exc) or "Forbidden.", "forbidden")
         except Exception:
+            logger.exception("Unexpected error in OrderConsumer")
             await self.send_error("Internal server error.", "server_error")
 
     @staticmethod
@@ -217,6 +213,10 @@ class OrderConsumer(AuthenticatedConsumer):
             raise ValidationError("status_description is too long.")
         if position and len(str(position)) > 512:
             raise ValidationError("position is too long.")
+        if new_status == Order.Status.ACCEPTED:
+            raise ValidationError("Use accept_order to accept an order.")
+        if new_status == Order.Status.PENDING:
+            raise ValidationError("Cannot revert to PENDING.")
 
         order = await self._update_status(
             int(order_id), user.id, new_status, str(description or ""), position

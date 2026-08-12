@@ -1,18 +1,18 @@
-from rest_framework.permissions import BasePermission, SAFE_METHODS
+from rest_framework.permissions import SAFE_METHODS, BasePermission
 
 
 class IsAdminUserRole(BasePermission):
     def has_permission(self, request, view):
-        return (
-            request.user.is_authenticated
+        return bool(
+            request.user and request.user.is_authenticated
             and getattr(request.user, "role", None) == "ADMIN"
         )
 
 
 class IsFirmUser(BasePermission):
     def has_permission(self, request, view):
-        return (
-            request.user.is_authenticated
+        return bool(
+            request.user and request.user.is_authenticated
             and request.user.role == "FIRM"
             and request.user.is_verified
         )
@@ -20,22 +20,24 @@ class IsFirmUser(BasePermission):
 
 class IsCourierUser(BasePermission):
     def has_permission(self, request, view):
-        return (
-            request.user.is_authenticated
+        return bool(
+            request.user and request.user.is_authenticated
             and request.user.role == "COURIER"
             and request.user.is_verified
         )
 
 
 class IsAdminOrSelf(BasePermission):
-    """Admins: full access. Others: object-level access to own user only; create denied."""
+    """Admins: full access. Other users: only their own account, no create."""
 
     def has_permission(self, request, view):
-        if not request.user.is_authenticated:
+        if not request.user or not request.user.is_authenticated:
             return False
         if request.user.role == "ADMIN":
             return True
-        return view.action != "create"
+        if view.action == "create":
+            return False
+        return True
 
     def has_object_permission(self, request, view, obj):
         if request.user.role == "ADMIN":
@@ -45,7 +47,7 @@ class IsAdminOrSelf(BasePermission):
 
 class IsAdminOrVerifiedFirm(BasePermission):
     def has_permission(self, request, view):
-        if not request.user.is_authenticated:
+        if not request.user or not request.user.is_authenticated:
             return False
         if request.user.role == "ADMIN":
             return True
@@ -54,7 +56,7 @@ class IsAdminOrVerifiedFirm(BasePermission):
 
 class IsItemOwnerOrAdmin(BasePermission):
     def has_permission(self, request, view):
-        return request.user.is_authenticated
+        return bool(request.user and request.user.is_authenticated)
 
     def has_object_permission(self, request, view, obj):
         if request.user.role == "ADMIN":
@@ -68,26 +70,30 @@ class IsItemOwnerOrAdmin(BasePermission):
 
 
 class IsTodoAssignerOrAdmin(BasePermission):
-    """Admins and verified firms may create todos; only assigner or admin may edit/delete."""
-
     def has_permission(self, request, view):
-        if not request.user.is_authenticated:
+        if not request.user or not request.user.is_authenticated:
             return False
-        if request.method in SAFE_METHODS:
-            return True
         if request.user.role == "ADMIN":
+            return True
+        if request.method in SAFE_METHODS:
             return True
         if request.method == "POST":
             return request.user.role == "FIRM" and request.user.is_verified
-        return True
+        if request.method in ("PUT", "PATCH"):
+            return (
+                (request.user.role == "FIRM" and request.user.is_verified)
+                or (request.user.role == "COURIER" and request.user.is_verified)
+            )
+        return False
 
     def has_object_permission(self, request, view, obj):
         if request.user.role == "ADMIN":
             return True
         if request.user.role == "FIRM" and request.user.is_verified:
-            if request.method in SAFE_METHODS:
-                return obj.assigned_by_id == request.user.id
-            return obj.assigned_by_id == request.user.id
+            return (
+                obj.assigned_by_id == request.user.id
+                or obj.firm_id == request.user.id
+            )
         if request.user.role == "COURIER" and request.user.is_verified:
             if request.method in SAFE_METHODS:
                 return obj.courier.user_id == request.user.id

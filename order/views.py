@@ -1,9 +1,11 @@
 from rest_framework import viewsets, permissions, status
 from rest_framework.response import Response
-from django.contrib.auth import get_user_model
+from rest_framework.exceptions import ValidationError
 from rest_framework.pagination import PageNumberPagination
+from django.contrib.auth import get_user_model
+from django.db import transaction
+
 from users.permissions import (
-    IsAdminUserRole,
     IsAdminOrVerifiedFirm,
     IsItemOwnerOrAdmin,
     IsTodoAssignerOrAdmin,
@@ -15,19 +17,21 @@ from .serializers import (
     TodoWriteSerializer,
     TodoCourierStatusSerializer,
 )
+
 User = get_user_model()
 
-class StandartResultsSetPagination(PageNumberPagination):
-    page_size = 30
-    page_size_query_param = 'page_size'
-    max_page_size = 100
-class ItemViewSet(viewsets.ModelViewSet):
-    """CRUD for items. Firms manage their own; admins manage all."""
 
+class StandardResultsSetPagination(PageNumberPagination):
+    page_size = 30
+    page_size_query_param = "page_size"
+    max_page_size = 100
+
+
+class ItemViewSet(viewsets.ModelViewSet):
     queryset = Item.objects.select_related("owner").all()
     serializer_class = ItemSerializer
     permission_classes = [permissions.IsAuthenticated, IsItemOwnerOrAdmin]
-    pagination_class = StandartResultsSetPagination
+    pagination_class = StandardResultsSetPagination
 
     def get_queryset(self):
         user = self.request.user
@@ -36,8 +40,6 @@ class ItemViewSet(viewsets.ModelViewSet):
             return qs
         if user.role == User.Role.FIRM and user.is_verified:
             return qs.filter(owner=user)
-        if user.role == User.Role.COURIER and user.is_verified:
-            return qs.none()
         return qs.none()
 
     def get_permissions(self):
@@ -56,30 +58,29 @@ class ItemViewSet(viewsets.ModelViewSet):
                 try:
                     owner = User.objects.get(pk=owner_id, role=User.Role.FIRM)
                 except User.DoesNotExist:
-                    from rest_framework.exceptions import ValidationError
                     raise ValidationError({"owner": "Invalid firm user id."})
-            else:
-                owner = user
         serializer.save(owner=owner)
 
 
 class TodoViewSet(viewsets.ModelViewSet):
-    """
-    CRUD for courier tasks assigned by admins or verified firms.
-    Couriers can list their todos and update status only.
-    """
-
     queryset = Todo.objects.select_related(
-        "assigned_by", "courier", "courier__user"
+        "assigned_by", "courier", "courier__user", "firm"
     ).all()
-    permission_classes = [permissions.IsAuthenticated, IsTodoAssignerOrAdmin]
-    pagination_class = StandartResultsSetPagination
+    pagination_class = StandardResultsSetPagination
+
+    def get_permissions(self):
+        if self.action == "create":
+            return [permissions.IsAuthenticated(), IsAdminOrVerifiedFirm()]
+        if self.action in ("update", "partial_update", "destroy"):
+            return [permissions.IsAuthenticated(), IsTodoAssignerOrAdmin()]
+        return [permissions.IsAuthenticated()]
 
     def get_serializer_class(self):
-        if self.action in ("create", "update", "partial_update"):
-            user = self.request.user
-            if user.role == User.Role.COURIER:
+        if self.action in ("update", "partial_update"):
+            if self.request.user.role == User.Role.COURIER:
                 return TodoCourierStatusSerializer
+            return TodoWriteSerializer
+        if self.action == "create":
             return TodoWriteSerializer
         return TodoSerializer
 
@@ -89,11 +90,13 @@ class TodoViewSet(viewsets.ModelViewSet):
         if user.role == User.Role.ADMIN:
             return qs
         if user.role == User.Role.FIRM and user.is_verified:
-            return qs.filter(assigned_by=user)
+            # Фирма видит и то, что она сама назначила, и то, что назначено её курьерам
+            return qs.filter(firm=user) | qs.filter(assigned_by=user)
         if user.role == User.Role.COURIER and user.is_verified:
             return qs.filter(courier__user=user)
         return qs.none()
 
+    @transaction.atomic
     def create(self, request, *args, **kwargs):
         if request.user.role not in (User.Role.ADMIN, User.Role.FIRM):
             return Response(
@@ -103,7 +106,6 @@ class TodoViewSet(viewsets.ModelViewSet):
         return super().create(request, *args, **kwargs)
 
     def destroy(self, request, *args, **kwargs):
-        todo = self.get_object()
         if request.user.role == User.Role.COURIER:
             return Response(
                 {"detail": "Couriers cannot delete todos."},

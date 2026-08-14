@@ -16,19 +16,31 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         token["role"] = user.role
         token["is_verified"] = user.is_verified
         token["username"] = user.username
+        
+        if user.role == user.Role.FIRM and hasattr(user, 'firm_profile'):
+            token["firm_profile_id"] = user.firm_profile.id
+        elif user.role == user.Role.COURIER and hasattr(user, 'courier_profile'):
+            token["courier_profile_id"] = user.courier_profile.id
+            
         return token
 
     def validate(self, attrs):
         data = super().validate(attrs)
-        if not self.user.is_active:
-            raise serializers.ValidationError({"detail": "Account is disabled."})
-        data["user"] = {
+        
+        user_dict = {
             "id": self.user.id,
             "username": self.user.username,
             "email": self.user.email,
             "role": self.user.role,
             "is_verified": self.user.is_verified,
         }
+
+        if self.user.role == self.user.Role.FIRM and hasattr(self.user, 'firm_profile'):
+            user_dict["firm_profile"] = FirmProfileSerializer(self.user.firm_profile).data
+        elif self.user.role == self.user.Role.COURIER and hasattr(self.user, 'courier_profile'):
+            user_dict["courier_profile"] = CourierProfileSerializer(self.user.courier_profile).data
+            
+        data["user"] = user_dict
         return data
 
 

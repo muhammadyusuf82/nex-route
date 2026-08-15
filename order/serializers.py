@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-
+from .geolocation import get_street_data_from_lat_and_lon
 from .models import Item, Order, Todo
 
 User = get_user_model()
@@ -57,6 +57,9 @@ class TodoSerializer(serializers.ModelSerializer):
 
 
 class TodoWriteSerializer(serializers.ModelSerializer):
+    region = serializers.CharField(required=False, allow_blank=True)
+    city = serializers.CharField(required=False, allow_blank=True)
+    street = serializers.CharField(required=False, allow_blank=True)
     class Meta:
         model = Todo
         fields = ("title", "description", "courier", "firm", "scheduled_at",
@@ -67,12 +70,10 @@ class TodoWriteSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Courier must be active and verified.")
         request = self.context.get("request")
         user = request.user if request else None
-        # Фирма может назначать todo только курьерам своей фирмы
+        
         if user and getattr(user, "role", None) == User.Role.FIRM:
             if getattr(value, "firm_id", None) != user.id:
-                raise serializers.ValidationError(
-                    "You can only assign tasks to couriers of your own firm."
-                )
+                raise serializers.ValidationError("You can only assign tasks to couriers of your own firm.")
         return value
 
     def validate_longitude(self, value):
@@ -90,7 +91,6 @@ class TodoWriteSerializer(serializers.ModelSerializer):
         user = request.user if request else None
         role = getattr(user, "role", None)
 
-        # Фирма не может назначить задачу от имени другой фирмы
         if role == User.Role.FIRM and "firm" in attrs and attrs["firm"] != user:
             raise serializers.ValidationError({"firm": "Firms may not assign on behalf of others."})
         return attrs
@@ -100,8 +100,16 @@ class TodoWriteSerializer(serializers.ModelSerializer):
         validated_data["assigned_by"] = request.user
         if getattr(request.user, "role", None) == User.Role.FIRM and not validated_data.get("firm"):
             validated_data["firm"] = request.user
+            
+        lat = validated_data.get("latitude")
+        lon = validated_data.get("longtitude")
+        if lat is not None and lon is not None:
+            address_data = get_street_data_from_lat_and_lon(float(lat), float(lon))
+            if address_data: 
+                validated_data["region"] = address_data.get("region") or validated_data.get("region", "")
+                validated_data["city"] = address_data.get("city") or validated_data.get("city", "")
+                validated_data["street"] = address_data.get("street") or validated_data.get("street", "")
         return super().create(validated_data)
-
 
 class TodoCourierStatusSerializer(serializers.ModelSerializer):
     """Couriers may only update task status."""

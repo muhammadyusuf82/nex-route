@@ -103,6 +103,7 @@ class TodoWriteSerializer(serializers.ModelSerializer):
             
         lat = validated_data.get("latitude")
         lon = validated_data.get("longtitude")
+        
         if lat is not None and lon is not None:
             address_data = get_street_data_from_lat_and_lon(float(lat), float(lon))
             if address_data: 

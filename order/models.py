@@ -140,10 +140,10 @@ class Todo(models.Model):
         on_delete=models.CASCADE,
         related_name="todos",
     )
-    scheduled_at = models.DateTimeField()
-    region = models.CharField(max_length=128)
-    city = models.CharField(max_length=128)
-    street = models.CharField(max_length=255)
+    scheduled_at = models.DateTimeField(auto_now_add=True)
+    region = models.CharField(max_length=255, blank=True, default="")
+    city = models.CharField(max_length=255, blank=True, default="")
+    street = models.CharField(max_length=255, blank=True, default="")
     longitude = models.DecimalField(max_digits=9, decimal_places=6)
     latitude = models.DecimalField(max_digits=9, decimal_places=6)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING)

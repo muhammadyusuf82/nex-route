@@ -1,16 +1,19 @@
 """
-WSGI config for core project.
+WSGI config for the core project.
 
-It exposes the WSGI callable as a module-level variable named ``application``.
+PythonAnywhere serves the site over WSGI (it does not support ASGI /
+WebSockets on the standard web-app workers), so this module exposes a
+plain Django WSGI ``application`` — which is what PA's own
+``/var/www/<user>_pythonanywhere_com_wsgi.py`` should import.
 
-For more information on this file, see
-https://docs.djangoproject.com/en/6.0/howto/deployment/wsgi/
+The Channels / Daphne setup is still available for local development via
+``core/asgi.py`` (run with ``daphne core.asgi:application``).
 """
 
 import os
 
 from django.core.wsgi import get_wsgi_application
 
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'core.settings')
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "core.settings")
 
 application = get_wsgi_application()
